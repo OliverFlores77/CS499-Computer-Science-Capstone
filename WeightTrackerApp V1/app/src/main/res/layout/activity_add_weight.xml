@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:gravity="center_vertical">
+
+    <TextView
+        android:id="@+id/textTitleAdd"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="32dp"
+        android:text="Log Daily Weight"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
+    <EditText
+        android:id="@+id/editWeightInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp"
+        android:hint="Enter Weight (lbs)"
+        android:inputType="numberDecimal" />
+
+    <TextView
+        android:id="@+id/textSmsPrompt"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:text="Would you like to receive SMS text alerts when you reach your target goal weight?"
+        android:textSize="14sp" />
+
+    <Switch
+        android:id="@+id/switchSmsPermission"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="32dp"
+        android:text="Enable Goal Notifications"
+        android:textSize="16sp" />
+
+    <Button
+        android:id="@+id/buttonSaveWeight"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Save Entry" />
+
+</LinearLayout>
