@@ -15,22 +15,44 @@ import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
+/**
+ * Main screen after login: shows the goal weight and the weight history,
+ * and links to the Add Weight screen.
+ * Data comes from WeightRepository; the current user comes from SessionManager.
+ */
 public class DashboardActivity extends AppCompatActivity {
+
+    /** Key used to pass the goal weight to AddWeightActivity in an Intent. */
+    public static final String EXTRA_GOAL_WEIGHT = "GOAL_WEIGHT";
+
+    /** Goal weight (lbs) shown until the user changes it. */
+    public static final double DEFAULT_GOAL_WEIGHT = 150.0;
 
     TextView textGoalWeight;
     GridView weightHistoryGrid;
     Button buttonAddData;
-    DatabaseHelper dbHelper;
+    WeightRepository repository;
+    SessionManager sessionManager;
     SimpleCursorAdapter adapter;
 
-    private double currentGoalWeight = 150.0;
+    private int currentUserId;
+    private double currentGoalWeight = DEFAULT_GOAL_WEIGHT;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_dashboard);
 
-        dbHelper = new DatabaseHelper(this);
+        repository = new WeightRepository(this);
+        sessionManager = new SessionManager(this);
+
+        // Nobody is logged in: send the user to the login screen.
+        if (!sessionManager.isLoggedIn()) {
+            goToLogin();
+            return;
+        }
+        currentUserId = sessionManager.getUserId();
+
+        setContentView(R.layout.activity_dashboard);
 
         textGoalWeight = findViewById(R.id.textGoalWeight);
         weightHistoryGrid = findViewById(R.id.weightHistoryGrid);
@@ -44,11 +66,12 @@ public class DashboardActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 Intent intent = new Intent(DashboardActivity.this, AddWeightActivity.class);
-                intent.putExtra("GOAL_WEIGHT", currentGoalWeight);
+                intent.putExtra(EXTRA_GOAL_WEIGHT, currentGoalWeight);
                 startActivity(intent);
             }
         });
 
+        // Tap the goal weight to change it.
         textGoalWeight.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -56,10 +79,13 @@ public class DashboardActivity extends AppCompatActivity {
             }
         });
 
+        // Long-press the goal weight to log out.
         textGoalWeight.setOnLongClickListener(new View.OnLongClickListener() {
             @Override
             public boolean onLongClick(View v) {
-                finish();
+                sessionManager.clear();
+                Toast.makeText(DashboardActivity.this, "Logged out", Toast.LENGTH_SHORT).show();
+                goToLogin();
                 return true;
             }
         });
@@ -68,7 +94,16 @@ public class DashboardActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        refreshGridData();
+        // Reload when returning from the Add Weight screen.
+        if (sessionManager.isLoggedIn()) {
+            refreshGridData();
+        }
+    }
+
+    /** Opens the login screen and closes this one. */
+    private void goToLogin() {
+        startActivity(new Intent(this, LoginActivity.class));
+        finish();
     }
 
     private void showGoalWeightDialog() {
@@ -94,13 +129,14 @@ public class DashboardActivity extends AppCompatActivity {
                 .show();
     }
 
+    /** Loads the current user's weight history into the grid. */
     private void refreshGridData() {
-        Cursor cursor = dbHelper.getAllWeights();
+        Cursor cursor = repository.getWeights(currentUserId);
 
         String[] fromColumns = {DatabaseHelper.COL_DATE, DatabaseHelper.COL_WEIGHT_VALUE};
         int[] toViews = {R.id.textRowDate, R.id.textRowWeight};
 
-        // Overriding getView to find and attach the click listener to the specific delete button inside the row
+        // The adapter is extended so each row's delete button can be wired up in getView.
         adapter = new SimpleCursorAdapter(
                 this,
                 R.layout.grid_item_weight,
@@ -113,16 +149,18 @@ public class DashboardActivity extends AppCompatActivity {
             public View getView(int position, View convertView, ViewGroup parent) {
                 View view = super.getView(position, convertView, parent);
 
-                // Use the cursor at this row position to find the unique database entry ID
+                // Use the cursor at this row position to find the unique database entry ID.
                 Cursor currentCursor = (Cursor) getItem(position);
-                final int rowId = currentCursor.getInt(currentCursor.getColumnIndexOrThrow(DatabaseHelper.COL_WEIGHT_ID));
+                final int rowId = currentCursor.getInt(
+                        currentCursor.getColumnIndexOrThrow(DatabaseHelper.COL_WEIGHT_ID));
 
-                // Find your row's specific delete button/action item (adjust R.id name if different in your layout)
-                View btnDelete = view.findViewById(R.id.buttonDeleteRow);                if (btnDelete != null) {
+                // Attach the delete action to this row's delete button.
+                View btnDelete = view.findViewById(R.id.buttonDeleteRow);
+                if (btnDelete != null) {
                     btnDelete.setOnClickListener(new View.OnClickListener() {
                         @Override
                         public void onClick(View v) {
-                            dbHelper.deleteWeight(rowId);
+                            repository.deleteWeight(rowId);
                             Toast.makeText(DashboardActivity.this, "Weight Entry Deleted", Toast.LENGTH_SHORT).show();
                             refreshGridData();
                         }

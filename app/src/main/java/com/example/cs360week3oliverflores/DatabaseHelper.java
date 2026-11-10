@@ -6,7 +6,15 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
+/**
+ * Creates and talks to the app's SQLite database.
+ *
+ * Screens should not use this class directly; they go through WeightRepository.
+ */
 public class DatabaseHelper extends SQLiteOpenHelper {
+
+    /** Returned by getUserId() when no matching user exists. */
+    public static final int NO_USER = -1;
 
     private static final String DATABASE_NAME = "weightTracker.db";
     private static final int DATABASE_VERSION = 1;
@@ -59,15 +67,23 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         return result != -1;
     }
 
-    // Check credentials for login validation
-    public boolean checkUser(String username, String password) {
+    /**
+     * Looks up a user by username and password.
+     * Uses ? placeholders so user input is never pasted into the SQL text.
+     *
+     * @return the user's _id, or NO_USER if the credentials do not match
+     */
+    public int getUserId(String username, String password) {
         SQLiteDatabase db = this.getReadableDatabase();
-        String query = "SELECT * FROM " + TABLE_USERS + " WHERE " +
+        String query = "SELECT " + COL_USER_ID + " FROM " + TABLE_USERS + " WHERE " +
                 COL_USERNAME + " = ? AND " + COL_PASSWORD + " = ?";
         Cursor cursor = db.rawQuery(query, new String[]{username, password});
-        boolean exists = cursor.getCount() > 0;
+        int userId = NO_USER;
+        if (cursor.moveToFirst()) {
+            userId = cursor.getInt(0);
+        }
         cursor.close();
-        return exists;
+        return userId;
     }
 
     // Add new weight entry
