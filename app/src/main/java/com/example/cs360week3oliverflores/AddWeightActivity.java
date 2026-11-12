@@ -20,6 +20,7 @@ import java.util.Calendar;
 /**
  * Screen for logging a weight entry. The user types a weight, picks a date
  * (today by default), and can optionally turn on an SMS alert for reaching the goal.
+ * The weight is checked before it is saved, and it is saved under the logged-in user.
  */
 public class AddWeightActivity extends AppCompatActivity {
 
@@ -34,8 +35,6 @@ public class AddWeightActivity extends AppCompatActivity {
     Button buttonSaveWeight;
     WeightRepository repository;
     SessionManager sessionManager;
-
-    private double targetGoalWeight;
 
     // The chosen entry date. Month is zero-based (0 = January), as Android's picker uses.
     private int selectedYear;
@@ -57,11 +56,6 @@ public class AddWeightActivity extends AppCompatActivity {
         }
 
         setContentView(R.layout.activity_add_weight);
-
-        // Goal weight passed in from the dashboard.
-        targetGoalWeight = getIntent().getDoubleExtra(
-                DashboardActivity.EXTRA_GOAL_WEIGHT,
-                DashboardActivity.DEFAULT_GOAL_WEIGHT);
 
         editWeightInput = findViewById(R.id.editWeightInput);
         buttonPickDate = findViewById(R.id.buttonPickDate);
@@ -87,19 +81,28 @@ public class AddWeightActivity extends AppCompatActivity {
             public void onClick(View v) {
                 String weightStr = editWeightInput.getText().toString().trim();
 
-                if (!weightStr.isEmpty()) {
-                    double weight = Double.parseDouble(weightStr);
-                    String entryDate = DateHelper.fromPicker(selectedYear, selectedMonth, selectedDay);
-
-                    repository.addWeight(sessionManager.getUserId(), entryDate, weight);
-                    Toast.makeText(AddWeightActivity.this, "Weight Logged!", Toast.LENGTH_SHORT).show();
-
-                    if (switchSmsPermission.isChecked()) {
-                        checkAndSendSmsAlert(weight);
-                    }
-
-                    finish();
+                // Check the input first, so bad input shows a message instead of crashing.
+                String error = InputValidator.validateWeight(weightStr);
+                if (error != null) {
+                    editWeightInput.setError(error);
+                    return;
                 }
+
+                double weight = Double.parseDouble(weightStr);
+                String entryDate = DateHelper.fromPicker(selectedYear, selectedMonth, selectedDay);
+                int userId = sessionManager.getUserId();
+
+                if (!repository.addWeight(userId, entryDate, weight)) {
+                    Toast.makeText(AddWeightActivity.this, "Could not save the weight entry.", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                Toast.makeText(AddWeightActivity.this, "Weight Logged!", Toast.LENGTH_SHORT).show();
+
+                if (switchSmsPermission.isChecked()) {
+                    checkAndSendSmsAlert(weight, repository.getGoalWeight(userId));
+                }
+
+                finish();
             }
         });
     }
@@ -129,9 +132,9 @@ public class AddWeightActivity extends AppCompatActivity {
         buttonPickDate.setText("Date: " + DateHelper.fromPicker(selectedYear, selectedMonth, selectedDay));
     }
 
-    private void checkAndSendSmsAlert(double weight) {
-        // Compare entered input against current dynamic target goal threshold
-        if (weight <= targetGoalWeight) {
+    private void checkAndSendSmsAlert(double weight, double goalWeight) {
+        // Compare the entered weight against this user's saved goal
+        if (weight <= goalWeight) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.SEND_SMS}, SMS_PERMISSION_REQUEST_CODE);
             } else {

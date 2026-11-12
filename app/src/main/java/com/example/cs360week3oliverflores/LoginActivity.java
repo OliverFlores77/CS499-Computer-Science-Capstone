@@ -61,19 +61,30 @@ public class LoginActivity extends AppCompatActivity {
             }
         });
 
-        // Registration action: save brand-new user details
+        // Registration action: check the input, then save the new account
         buttonCreateAccount.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 String user = usernameInput.getText().toString().trim();
                 String pass = passwordInput.getText().toString().trim();
 
-                if (!user.isEmpty() && !pass.isEmpty()) {
-                    if (repository.registerUser(user, pass)) {
+                String error = InputValidator.validateCredentials(user, pass);
+                if (error != null) {
+                    Toast.makeText(LoginActivity.this, error, Toast.LENGTH_SHORT).show();
+                    return;
+                }
+
+                RegisterResult result = repository.registerUser(user, pass);
+                switch (result) {
+                    case SUCCESS:
                         Toast.makeText(LoginActivity.this, "Account Created Successfully!", Toast.LENGTH_SHORT).show();
-                    }
-                } else {
-                    Toast.makeText(LoginActivity.this, "Please fill out all fields", Toast.LENGTH_SHORT).show();
+                        break;
+                    case USERNAME_TAKEN:
+                        Toast.makeText(LoginActivity.this, "That username is already taken", Toast.LENGTH_SHORT).show();
+                        break;
+                    default:
+                        Toast.makeText(LoginActivity.this, "Could not create the account. Please try again.", Toast.LENGTH_SHORT).show();
+                        break;
                 }
             }
         });

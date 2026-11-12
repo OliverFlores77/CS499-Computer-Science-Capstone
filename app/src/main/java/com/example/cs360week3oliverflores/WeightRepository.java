@@ -12,15 +12,16 @@ import java.util.List;
  * screen code focused on the user interface, and it means database changes only
  * need to be made in one place.
  *
- * NOTE FOR LATER ENHANCEMENTS: the userId parameters below are already part of
- * the method signatures so the Activities will not need to change again. Today the
- * weights table has no user_id column, so userId is not yet used for weight
- * queries. The Databases enhancement will add that column and pass userId through.
+ * Everything a user owns (weight entries, goal weight) is looked up by userId, so one
+ * user can never see or change another user's data.
  */
 public class WeightRepository {
 
     /** Returned by authenticateUser() when the username/password do not match. */
     public static final int NO_USER = DatabaseHelper.NO_USER;
+
+    /** Goal weight (lbs) every account starts with. */
+    public static final double DEFAULT_GOAL_WEIGHT = DatabaseHelper.DEFAULT_GOAL_WEIGHT;
 
     private final DatabaseHelper dbHelper;
 
@@ -39,35 +40,44 @@ public class WeightRepository {
         return dbHelper.getUserId(username, password);
     }
 
-    /** Creates a new account. Returns true if it was saved. */
-    public boolean registerUser(String username, String password) {
+    /** Creates a new account and says whether it worked, or why not. */
+    public RegisterResult registerUser(String username, String password) {
         return dbHelper.addUser(username, password);
+    }
+
+    // ----- Goal weight -----
+
+    /** Returns the user's saved goal weight (lbs). */
+    public double getGoalWeight(int userId) {
+        return dbHelper.getGoalWeight(userId);
+    }
+
+    /** Saves the user's goal weight. Returns true if it was saved. */
+    public boolean setGoalWeight(int userId, double goalWeight) {
+        return dbHelper.setGoalWeight(userId, goalWeight);
     }
 
     // ----- Weight entries -----
 
     /**
-     * Saves a weight entry.
+     * Saves a weight entry for a user.
      *
-     * @param userId the logged-in user (not yet stored; see note at top of class)
      * @param date   entry date as yyyy-MM-dd (see DateHelper)
      * @param weight weight in pounds
      * @return true if the entry was saved
      */
     public boolean addWeight(int userId, String date, double weight) {
-        return dbHelper.addWeight(date, weight);
+        return dbHelper.addWeight(userId, date, weight);
     }
 
     /**
-     * Loads the weight history as a list of WeightEntry objects.
+     * Loads this user's weight history as a list of WeightEntry objects.
      * The database cursor is read and closed here, so callers never have to
      * manage it. The order is not guaranteed; callers sort with WeightAnalyzer.
-     *
-     * @param userId the logged-in user (not yet used; see note at top of class)
      */
     public List<WeightEntry> getWeightEntries(int userId) {
         List<WeightEntry> entries = new ArrayList<>();
-        Cursor cursor = dbHelper.getAllWeights();
+        Cursor cursor = dbHelper.getWeightsForUser(userId);
         try {
             int idColumn = cursor.getColumnIndexOrThrow(DatabaseHelper.COL_WEIGHT_ID);
             int dateColumn = cursor.getColumnIndexOrThrow(DatabaseHelper.COL_DATE);
@@ -84,8 +94,8 @@ public class WeightRepository {
         return entries;
     }
 
-    /** Deletes one weight entry by its id. */
-    public void deleteWeight(int entryId) {
-        dbHelper.deleteWeight(entryId);
+    /** Deletes one of this user's weight entries. Entries of other users are never touched. */
+    public void deleteWeight(int userId, int entryId) {
+        dbHelper.deleteWeight(userId, entryId);
     }
 }

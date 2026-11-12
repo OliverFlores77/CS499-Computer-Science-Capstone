@@ -18,19 +18,13 @@ import java.util.Calendar;
 import java.util.List;
 
 /**
- * Main screen after login: shows the goal weight and the weight history, and lets the
- * user sort the history, filter it by date range, and see weekly summaries.
+ * Main screen after login: shows the user's saved goal weight and weight history, and lets
+ * the user sort the history, filter it by date range, and see weekly summaries.
  *
  * Data comes from WeightRepository, the current user comes from SessionManager, and
  * the sorting, filtering, and summary logic lives in WeightAnalyzer.
  */
 public class DashboardActivity extends AppCompatActivity {
-
-    /** Key used to pass the goal weight to AddWeightActivity in an Intent. */
-    public static final String EXTRA_GOAL_WEIGHT = "GOAL_WEIGHT";
-
-    /** Goal weight (lbs) shown until the user changes it. */
-    public static final double DEFAULT_GOAL_WEIGHT = 150.0;
 
     TextView textGoalWeight;
     GridView weightHistoryGrid;
@@ -43,7 +37,8 @@ public class DashboardActivity extends AppCompatActivity {
     WeightEntryAdapter adapter;
 
     private int currentUserId;
-    private double currentGoalWeight = DEFAULT_GOAL_WEIGHT;
+    // This user's goal weight (lbs), saved in the database.
+    private double currentGoalWeight;
 
     // Every entry for this user, as loaded from the database.
     private List<WeightEntry> allEntries = new ArrayList<>();
@@ -78,13 +73,15 @@ public class DashboardActivity extends AppCompatActivity {
         buttonFilter = findViewById(R.id.buttonFilter);
         buttonSummary = findViewById(R.id.buttonSummary);
 
+        // Load this user's saved goal weight.
+        currentGoalWeight = repository.getGoalWeight(currentUserId);
         textGoalWeight.setText("Goal Weight: " + currentGoalWeight + " lbs");
 
         // One adapter for the life of the screen. Its rows are replaced as the view changes.
         adapter = new WeightEntryAdapter(this, new WeightEntryAdapter.OnDeleteListener() {
             @Override
             public void onDelete(WeightEntry entry) {
-                repository.deleteWeight(entry.getId());
+                repository.deleteWeight(currentUserId, entry.getId());
                 Toast.makeText(DashboardActivity.this, "Weight Entry Deleted", Toast.LENGTH_SHORT).show();
                 loadEntries();
             }
@@ -96,9 +93,7 @@ public class DashboardActivity extends AppCompatActivity {
         buttonAddData.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Intent intent = new Intent(DashboardActivity.this, AddWeightActivity.class);
-                intent.putExtra(EXTRA_GOAL_WEIGHT, currentGoalWeight);
-                startActivity(intent);
+                startActivity(new Intent(DashboardActivity.this, AddWeightActivity.class));
             }
         });
 
@@ -280,26 +275,50 @@ public class DashboardActivity extends AppCompatActivity {
 
     // ----- Goal weight -----
 
+    /**
+     * Lets the user change their goal weight. The new goal is checked, saved in the
+     * database for this user, and shown. If it is not valid the dialog stays open
+     * with a message.
+     */
     private void showGoalWeightDialog() {
         final EditText input = new EditText(this);
         input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
         input.setHint(String.valueOf(currentGoalWeight));
 
-        new AlertDialog.Builder(this)
+        final AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("Update Goal Weight")
                 .setMessage("Enter your new target weight:")
                 .setView(input)
-                .setPositiveButton("Save", new DialogInterface.OnClickListener() {
+                .setPositiveButton("Save", null) // set below so the dialog can stay open on bad input
+                .setNegativeButton("Cancel", null)
+                .create();
+
+        dialog.setOnShowListener(new DialogInterface.OnShowListener() {
+            @Override
+            public void onShow(DialogInterface shown) {
+                dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(new View.OnClickListener() {
                     @Override
-                    public void onClick(DialogInterface dialog, int which) {
+                    public void onClick(View v) {
                         String value = input.getText().toString().trim();
-                        if (!value.isEmpty()) {
-                            currentGoalWeight = Double.parseDouble(value);
+                        String error = InputValidator.validateWeight(value);
+                        if (error != null) {
+                            input.setError(error);
+                            return;
+                        }
+
+                        double newGoal = Double.parseDouble(value);
+                        if (repository.setGoalWeight(currentUserId, newGoal)) {
+                            currentGoalWeight = newGoal;
                             textGoalWeight.setText("Goal Weight: " + currentGoalWeight + " lbs");
+                            dialog.dismiss();
+                        } else {
+                            Toast.makeText(DashboardActivity.this, "Could not save the goal weight.", Toast.LENGTH_SHORT).show();
                         }
                     }
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
+                });
+            }
+        });
+
+        dialog.show();
     }
 }
