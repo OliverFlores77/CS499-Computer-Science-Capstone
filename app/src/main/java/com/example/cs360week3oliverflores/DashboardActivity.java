@@ -1,24 +1,28 @@
 package com.example.cs360week3oliverflores;
 
+import android.app.DatePickerDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.database.Cursor;
 import android.os.Bundle;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.DatePicker;
 import android.widget.EditText;
 import android.widget.GridView;
-import android.widget.SimpleCursorAdapter;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.List;
 
 /**
- * Main screen after login: shows the goal weight and the weight history,
- * and links to the Add Weight screen.
- * Data comes from WeightRepository; the current user comes from SessionManager.
+ * Main screen after login: shows the goal weight and the weight history, and lets the
+ * user sort the history, filter it by date range, and see weekly summaries.
+ *
+ * Data comes from WeightRepository, the current user comes from SessionManager, and
+ * the sorting, filtering, and summary logic lives in WeightAnalyzer.
  */
 public class DashboardActivity extends AppCompatActivity {
 
@@ -31,12 +35,25 @@ public class DashboardActivity extends AppCompatActivity {
     TextView textGoalWeight;
     GridView weightHistoryGrid;
     Button buttonAddData;
+    Button buttonSort;
+    Button buttonFilter;
+    Button buttonSummary;
     WeightRepository repository;
     SessionManager sessionManager;
-    SimpleCursorAdapter adapter;
+    WeightEntryAdapter adapter;
 
     private int currentUserId;
     private double currentGoalWeight = DEFAULT_GOAL_WEIGHT;
+
+    // Every entry for this user, as loaded from the database.
+    private List<WeightEntry> allEntries = new ArrayList<>();
+    // What the grid is showing right now (allEntries after the filter and sort).
+    private List<WeightEntry> displayedEntries = new ArrayList<>();
+
+    private boolean newestFirst = true;
+    // Date filter in yyyy-MM-dd form. Both are null when no filter is active.
+    private String filterStart = null;
+    private String filterEnd = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -57,10 +74,24 @@ public class DashboardActivity extends AppCompatActivity {
         textGoalWeight = findViewById(R.id.textGoalWeight);
         weightHistoryGrid = findViewById(R.id.weightHistoryGrid);
         buttonAddData = findViewById(R.id.buttonAddData);
+        buttonSort = findViewById(R.id.buttonSort);
+        buttonFilter = findViewById(R.id.buttonFilter);
+        buttonSummary = findViewById(R.id.buttonSummary);
 
         textGoalWeight.setText("Goal Weight: " + currentGoalWeight + " lbs");
 
-        refreshGridData();
+        // One adapter for the life of the screen. Its rows are replaced as the view changes.
+        adapter = new WeightEntryAdapter(this, new WeightEntryAdapter.OnDeleteListener() {
+            @Override
+            public void onDelete(WeightEntry entry) {
+                repository.deleteWeight(entry.getId());
+                Toast.makeText(DashboardActivity.this, "Weight Entry Deleted", Toast.LENGTH_SHORT).show();
+                loadEntries();
+            }
+        });
+        weightHistoryGrid.setAdapter(adapter);
+
+        // The history is loaded in onResume, which always runs right after onCreate.
 
         buttonAddData.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -68,6 +99,35 @@ public class DashboardActivity extends AppCompatActivity {
                 Intent intent = new Intent(DashboardActivity.this, AddWeightActivity.class);
                 intent.putExtra(EXTRA_GOAL_WEIGHT, currentGoalWeight);
                 startActivity(intent);
+            }
+        });
+
+        // Toggle between newest-first and oldest-first.
+        buttonSort.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                newestFirst = !newestFirst;
+                buttonSort.setText(newestFirst ? "Sort: Newest" : "Sort: Oldest");
+                showEntries();
+            }
+        });
+
+        // Start a date-range filter, or clear the one that is active.
+        buttonFilter.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (filterStart != null) {
+                    clearDateFilter();
+                } else {
+                    startDateFilter();
+                }
+            }
+        });
+
+        buttonSummary.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showWeeklySummary();
             }
         });
 
@@ -96,7 +156,7 @@ public class DashboardActivity extends AppCompatActivity {
         super.onResume();
         // Reload when returning from the Add Weight screen.
         if (sessionManager.isLoggedIn()) {
-            refreshGridData();
+            loadEntries();
         }
     }
 
@@ -105,6 +165,120 @@ public class DashboardActivity extends AppCompatActivity {
         startActivity(new Intent(this, LoginActivity.class));
         finish();
     }
+
+    // ----- Loading and showing the history -----
+
+    /** Reads this user's entries from the database, then updates the grid. */
+    private void loadEntries() {
+        allEntries = repository.getWeightEntries(currentUserId);
+        showEntries();
+    }
+
+    /**
+     * Applies the current filter and sort order to the loaded entries and shows
+     * the result. This does not touch the database.
+     */
+    private void showEntries() {
+        List<WeightEntry> view;
+        if (filterStart != null) {
+            view = WeightAnalyzer.filterByDateRange(allEntries, filterStart, filterEnd);
+        } else {
+            view = new ArrayList<>(allEntries);
+        }
+
+        if (newestFirst) {
+            WeightAnalyzer.sortNewestFirst(view);
+        } else {
+            WeightAnalyzer.sortOldestFirst(view);
+        }
+
+        displayedEntries = view;
+        adapter.setEntries(view);
+    }
+
+    // ----- Date filter -----
+
+    /** Asks for a start date, then an end date, then applies the filter. */
+    private void startDateFilter() {
+        Toast.makeText(this, "Pick the start date", Toast.LENGTH_SHORT).show();
+        showDatePicker(new DatePickerDialog.OnDateSetListener() {
+            @Override
+            public void onDateSet(DatePicker view, int year, int month, int dayOfMonth) {
+                final String start = DateHelper.fromPicker(year, month, dayOfMonth);
+                Toast.makeText(DashboardActivity.this, "Now pick the end date", Toast.LENGTH_SHORT).show();
+                showDatePicker(new DatePickerDialog.OnDateSetListener() {
+                    @Override
+                    public void onDateSet(DatePicker view, int year, int month, int dayOfMonth) {
+                        applyDateFilter(start, DateHelper.fromPicker(year, month, dayOfMonth));
+                    }
+                });
+            }
+        });
+    }
+
+    private void applyDateFilter(String start, String end) {
+        // Keep the two dates in order, so the message below reads correctly.
+        if (start.compareTo(end) > 0) {
+            String swap = start;
+            start = end;
+            end = swap;
+        }
+        filterStart = start;
+        filterEnd = end;
+        buttonFilter.setText("Clear Filter");
+        showEntries();
+
+        if (displayedEntries.isEmpty()) {
+            Toast.makeText(this, "No entries between " + start + " and " + end, Toast.LENGTH_LONG).show();
+        } else {
+            Toast.makeText(this, "Showing " + displayedEntries.size() + " entries from "
+                    + start + " to " + end, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void clearDateFilter() {
+        filterStart = null;
+        filterEnd = null;
+        buttonFilter.setText("Filter Dates");
+        showEntries();
+    }
+
+    /** Opens a calendar dialog that starts on today and blocks future dates. */
+    private void showDatePicker(DatePickerDialog.OnDateSetListener listener) {
+        Calendar today = Calendar.getInstance();
+        DatePickerDialog dialog = new DatePickerDialog(
+                this,
+                listener,
+                today.get(Calendar.YEAR),
+                today.get(Calendar.MONTH),
+                today.get(Calendar.DAY_OF_MONTH));
+        dialog.getDatePicker().setMaxDate(System.currentTimeMillis());
+        dialog.show();
+    }
+
+    // ----- Weekly summary -----
+
+    /** Shows one line per week for the entries currently on screen. */
+    private void showWeeklySummary() {
+        String message;
+        if (displayedEntries.isEmpty()) {
+            message = "There are no entries to summarize.";
+        } else {
+            StringBuilder text = new StringBuilder();
+            for (WeekSummary summary : WeightAnalyzer.summarizeByWeek(displayedEntries)) {
+                text.append(summary.toString()).append("\n\n");
+            }
+            message = text.toString().trim();
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Weekly Summary")
+                .setMessage(message)
+                .setPositiveButton("OK", null)
+                .show();
+    }
+
+    // ----- Goal weight -----
 
     private void showGoalWeightDialog() {
         final EditText input = new EditText(this);
@@ -127,50 +301,5 @@ public class DashboardActivity extends AppCompatActivity {
                 })
                 .setNegativeButton("Cancel", null)
                 .show();
-    }
-
-    /** Loads the current user's weight history into the grid. */
-    private void refreshGridData() {
-        Cursor cursor = repository.getWeights(currentUserId);
-
-        String[] fromColumns = {DatabaseHelper.COL_DATE, DatabaseHelper.COL_WEIGHT_VALUE};
-        int[] toViews = {R.id.textRowDate, R.id.textRowWeight};
-
-        // The adapter is extended so each row's delete button can be wired up in getView.
-        adapter = new SimpleCursorAdapter(
-                this,
-                R.layout.grid_item_weight,
-                cursor,
-                fromColumns,
-                toViews,
-                0
-        ) {
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                View view = super.getView(position, convertView, parent);
-
-                // Use the cursor at this row position to find the unique database entry ID.
-                Cursor currentCursor = (Cursor) getItem(position);
-                final int rowId = currentCursor.getInt(
-                        currentCursor.getColumnIndexOrThrow(DatabaseHelper.COL_WEIGHT_ID));
-
-                // Attach the delete action to this row's delete button.
-                View btnDelete = view.findViewById(R.id.buttonDeleteRow);
-                if (btnDelete != null) {
-                    btnDelete.setOnClickListener(new View.OnClickListener() {
-                        @Override
-                        public void onClick(View v) {
-                            repository.deleteWeight(rowId);
-                            Toast.makeText(DashboardActivity.this, "Weight Entry Deleted", Toast.LENGTH_SHORT).show();
-                            refreshGridData();
-                        }
-                    });
-                }
-
-                return view;
-            }
-        };
-
-        weightHistoryGrid.setAdapter(adapter);
     }
 }

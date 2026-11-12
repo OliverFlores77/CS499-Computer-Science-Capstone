@@ -2,6 +2,8 @@ package com.example.cs360week3oliverflores;
 
 import android.content.Context;
 import android.database.Cursor;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * The single point of contact between the screens (Activities) and the database.
@@ -57,13 +59,29 @@ public class WeightRepository {
     }
 
     /**
-     * Returns the weight history for the history grid, newest date first.
-     * The caller is responsible for the cursor's lifecycle.
+     * Loads the weight history as a list of WeightEntry objects.
+     * The database cursor is read and closed here, so callers never have to
+     * manage it. The order is not guaranteed; callers sort with WeightAnalyzer.
      *
      * @param userId the logged-in user (not yet used; see note at top of class)
      */
-    public Cursor getWeights(int userId) {
-        return dbHelper.getAllWeights();
+    public List<WeightEntry> getWeightEntries(int userId) {
+        List<WeightEntry> entries = new ArrayList<>();
+        Cursor cursor = dbHelper.getAllWeights();
+        try {
+            int idColumn = cursor.getColumnIndexOrThrow(DatabaseHelper.COL_WEIGHT_ID);
+            int dateColumn = cursor.getColumnIndexOrThrow(DatabaseHelper.COL_DATE);
+            int weightColumn = cursor.getColumnIndexOrThrow(DatabaseHelper.COL_WEIGHT_VALUE);
+            while (cursor.moveToNext()) {
+                entries.add(new WeightEntry(
+                        cursor.getInt(idColumn),
+                        cursor.getString(dateColumn),
+                        cursor.getDouble(weightColumn)));
+            }
+        } finally {
+            cursor.close();
+        }
+        return entries;
     }
 
     /** Deletes one weight entry by its id. */

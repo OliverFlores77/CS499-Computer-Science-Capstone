@@ -1,6 +1,7 @@
 package com.example.cs360week3oliverflores;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
@@ -39,5 +40,38 @@ public class DateHelperTest {
     @Test
     public void today_hasIsoFormat() {
         assertTrue(DateHelper.today().matches("\\d{4}-\\d{2}-\\d{2}"));
+    }
+
+    @Test
+    public void isValidIsoFormat_acceptsAndRejects() {
+        assertTrue(DateHelper.isValidIsoFormat("2026-06-05"));
+        assertFalse(DateHelper.isValidIsoFormat("2026-6-5"));
+        assertFalse(DateHelper.isValidIsoFormat("06/05/2026"));
+        assertFalse(DateHelper.isValidIsoFormat(null));
+    }
+
+    @Test
+    public void weekStart_mondayStaysTheSameDay() {
+        // 2026-11-09 is a Monday.
+        assertEquals("2026-11-09", DateHelper.weekStart("2026-11-09"));
+    }
+
+    @Test
+    public void weekStart_midWeekAndSundayMapBackToMonday() {
+        assertEquals("2026-11-09", DateHelper.weekStart("2026-11-11")); // Wednesday
+        assertEquals("2026-11-02", DateHelper.weekStart("2026-11-08")); // Sunday
+    }
+
+    @Test
+    public void weekStart_crossesMonthAndYearBoundaries() {
+        // 2026-01-01 is a Thursday, so its week began Monday 2025-12-29.
+        assertEquals("2025-12-29", DateHelper.weekStart("2026-01-01"));
+        // 2026-12-02 is a Wednesday, so its week began Monday 2026-11-30.
+        assertEquals("2026-11-30", DateHelper.weekStart("2026-12-02"));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void weekStart_rejectsBadFormat() {
+        DateHelper.weekStart("11/09/2026");
     }
 }

@@ -17,10 +17,45 @@
         android:textStyle="bold" />
 
     <LinearLayout
-        android:id="@+id/gridHeaderLayout"
+        android:id="@+id/controlsLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_below="@id/textGoalWeight"
+        android:orientation="horizontal"
+        android:layout_marginBottom="8dp">
+
+        <Button
+            android:id="@+id/buttonSort"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginEnd="4dp"
+            android:text="Sort: Newest"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/buttonFilter"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginEnd="4dp"
+            android:text="Filter Dates"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/buttonSummary"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Weekly Summary"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/gridHeaderLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/controlsLayout"
         android:orientation="horizontal"
         android:paddingBottom="8dp"
         android:background="#EEEEEE">
